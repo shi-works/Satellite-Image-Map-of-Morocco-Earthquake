@@ -1,0 +1,522 @@
+<html>
+
+<head>
+    <title>Satellite Image Map of Morocco Earthquake</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src='https://unpkg.com/maplibre-gl@3.1.0/dist/maplibre-gl.js'></script>
+    <link href='https://unpkg.com/maplibre-gl@3.1.0/dist/maplibre-gl.css' rel='stylesheet' />
+    <script src="https://unpkg.com/pmtiles@2.10.0/dist/index.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+
+        .map-overlay {
+            font: bold 12px/20px 'Helvetica Neue', Arial, Helvetica, sans-serif;
+            position: absolute;
+            width: 200px;
+            bottom: 20px;
+            left: 0px;
+            padding: 10px;
+        }
+
+        .map-overlay .map-overlay-inner {
+            background-color: #fff;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+            border-radius: 3px;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+
+        .map-overlay label {
+            display: block;
+            margin: 0 0 0px;
+            font-size: 12px;
+            top: 100px;
+            left: 10px;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .map-overlay input {
+            background-color: transparent;
+            display: inline-block;
+            width: 100%;
+            position: relative;
+            margin: 0;
+            cursor: ew-resize;
+        }
+
+        .legend {
+            background-color: #fff;
+            border-radius: 3px;
+            bottom: 110px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.10);
+            font: 12px/20px 'Helvetica Neue', Arial, Helvetica, sans-serif;
+            padding: 10px;
+            position: absolute;
+            left: 10px;
+            z-index: 1;
+            line-height: 16px;
+            height: 80px;
+        }
+
+        .legend h4 {
+            margin: 0 0 10px;
+        }
+
+        .legend div span {
+            border-radius: 50%;
+            display: inline-block;
+            height: 15px;
+            margin-right: 10px;
+            width: 15px;
+            color: orangered
+        }
+
+        .circle {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <div class="map-overlay top">
+        <div class="map-overlay-inner">
+            <label>衛星画像 不透明度: <span id="slider-opacity-value">0%</span></label>
+            <input id="slider-opacity" type="range" min="0" max="100" step="1" value="100">
+        </div>
+    </div>
+    <div id='legend' class='legend'>
+        <h4>建物被害評価</h4>
+        <div class="circle" style='background-color: rgb(255, 0, 0); border: 1px solid black; display: inline-block;'>
+        </div>
+        <span style="display: inline-block; margin-left: 5px;">倒壊</span><br>
+        <div class="circle" style='background-color: rgb(255, 255, 0); border: 1px solid black; display: inline-block;'>
+        </div>
+        <span style="display: inline-block; margin-left: 5px;">損傷あり</span><br>
+        <div class="circle" style='background-color: rgb(0, 255, 0); border: 1px solid black; display: inline-block;'>
+        </div>
+        <span style="display: inline-block; margin-left: 5px;">おそらく損傷あり</span><br>
+    </div>
+
+    <script>
+        let protocol = new pmtiles.Protocol();
+        maplibregl.addProtocol("pmtiles", protocol.tile);
+
+        var map = new maplibregl.Map({
+            container: 'map',
+            style: 'https://tile2.openstreetmap.jp/styles/osm-bright/style.json',
+            center: [-8.2486872, 31.2211233],
+            zoom: 12,
+            minzoom: 1,
+            maxzoom: 23,
+            pitch: 0,
+            bearing: 0,
+            hash: true,
+            attributionControl: false
+        });
+
+        // ズーム・回転
+        map.addControl(new maplibregl.NavigationControl());
+
+        // フルスクリーンモードのオンオフ
+        map.addControl(new maplibregl.FullscreenControl());
+
+        // 現在位置表示
+        map.addControl(new maplibregl.GeolocateControl({
+            positionOptions: {
+                enableHighAccuracy: false
+            },
+            fitBoundsOptions: { maxZoom: 18 },
+            trackUserLocation: true,
+            showUserLocation: true
+        }));
+
+        // スケール表示
+        map.addControl(new maplibregl.ScaleControl({
+            maxWidth: 200,
+            unit: 'metric'
+        }));
+
+        // Attributionを折りたたみ表示
+        map.addControl(new maplibregl.AttributionControl({
+            compact: true,
+            customAttribution: '（<a href="https://twitter.com/syanseto" target="_blank">Twitter</a> | <a href="https://github.com/shi-works/cog-on-maplibre-gl-js" target="_blank">Github</a>） '
+        }));
+
+        map.on('load', () => {
+            // 衛星画像ソース
+            map.addSource("Morocco-Marrakesh", {
+                type: 'raster',
+                tiles: [
+                    'https://tiles.openaerialmap.org/64feb621649d390001c47515/0/64feb621649d390001c47516/{z}/{x}/{y}',
+                ],
+                attribution: '<a href="https://map.openaerialmap.org/#/-8.28094482421875,31.13760327002129,10/user/63e60f41c6ef740006cfd0e9?_k=lp7gmu" target="_blank">© Maxar Technologies Open Data Program, marged by Yerçizenler</a>',
+                tileSize: 512,
+                // scheme: "tms"
+            });
+
+            // 衛星画像レイヤ
+            map.addLayer({
+                id: 'Morocco-Marrakesh',
+                type: 'raster',
+                source: 'Morocco-Marrakesh',
+                minzoom: 9,
+                maxzoom: 22
+            });
+
+            // 衛星画像ソース
+            map.addSource("Morocco-Amizmiz-1", {
+                type: 'raster',
+                tiles: [
+                    'https://tiles.openaerialmap.org/64febd01649d390001c4751a/0/64febd01649d390001c4751b/{z}/{x}/{y}',
+                ],
+                attribution: '<a href="https://map.openaerialmap.org/#/-8.28094482421875,31.13760327002129,10/user/63e60f41c6ef740006cfd0e9?_k=lp7gmu" target="_blank">© Maxar Technologies Open Data Program, marged by Yerçizenler</a>',
+                tileSize: 512,
+                // scheme: "tms"
+            });
+
+            // 衛星画像レイヤ
+            map.addLayer({
+                id: 'Morocco-Amizmiz-1',
+                type: 'raster',
+                source: 'Morocco-Amizmiz-1',
+                minzoom: 9,
+                maxzoom: 22
+            });
+
+            // 衛星画像ソース
+            map.addSource("Morocco-Amizmiz-2", {
+                type: 'raster',
+                tiles: [
+                    'https://tiles.openaerialmap.org/64fec443649d390001c47524/0/64fec443649d390001c47525/{z}/{x}/{y}',
+                ],
+                attribution: '<a href="https://map.openaerialmap.org/#/-8.28094482421875,31.13760327002129,10/user/63e60f41c6ef740006cfd0e9?_k=lp7gmu" target="_blank">© Maxar Technologies Open Data Program, marged by Yerçizenler</a>',
+                tileSize: 512,
+                // scheme: "tms"
+            });
+
+            // 衛星画像レイヤ
+            map.addLayer({
+                id: 'Morocco-Amizmiz-2',
+                type: 'raster',
+                source: 'Morocco-Amizmiz-2',
+                minzoom: 9,
+                maxzoom: 22
+            });
+
+            // 衛星画像ソース
+            map.addSource("Morocco-Amizmiz-3", {
+                type: 'raster',
+                tiles: [
+                    'https://tiles.openaerialmap.org/64fef648649d390001c47538/0/64fef648649d390001c47539/{z}/{x}/{y}',
+                ],
+                attribution: '<a href="https://map.openaerialmap.org/#/-8.28094482421875,31.13760327002129,10/user/63e60f41c6ef740006cfd0e9?_k=lp7gmu" target="_blank">© Maxar Technologies Open Data Program, marged by Yerçizenler</a>',
+                tileSize: 512,
+                // scheme: "tms"
+            });
+
+            // 衛星画像レイヤ
+            map.addLayer({
+                id: 'Morocco-Amizmiz-3',
+                type: 'raster',
+                source: 'Morocco-Amizmiz-3',
+                minzoom: 9,
+                maxzoom: 22
+            });
+
+            // 衛星画像ソース
+            map.addSource("Morocco-Amizmiz-4", {
+                type: 'raster',
+                tiles: [
+                    'https://tiles.openaerialmap.org/64ff8605649d390001c47563/0/64ff8605649d390001c47564/{z}/{x}/{y}',
+                ],
+                attribution: '<a href="https://map.openaerialmap.org/#/-8.28094482421875,31.13760327002129,10/user/63e60f41c6ef740006cfd0e9?_k=lp7gmu" target="_blank">© Maxar Technologies Open Data Program, marged by Yerçizenler</a>',
+                tileSize: 512,
+                // scheme: "tms"
+            });
+
+            // 衛星画像レイヤ
+            map.addLayer({
+                id: 'Morocco-Amizmiz-4',
+                type: 'raster',
+                source: 'Morocco-Amizmiz-4',
+                minzoom: 9,
+                maxzoom: 22
+            });
+
+            // 衛星画像ソース
+            map.addSource("Morocco-Amizmiz-5", {
+                type: 'raster',
+                tiles: [
+                    'https://tiles.openaerialmap.org/65015f0a649d390001c475a5/0/65015f0a649d390001c475a6/{z}/{x}/{y}',
+                ],
+                attribution: '<a href="https://map.openaerialmap.org/#/-8.28094482421875,31.13760327002129,10/user/63e60f41c6ef740006cfd0e9?_k=lp7gmu" target="_blank">© Maxar Technologies Open Data Program, marged by Yerçizenler</a>',
+                tileSize: 512,
+                // scheme: "tms"
+            });
+
+            // 衛星画像レイヤ
+            map.addLayer({
+                id: 'Morocco-Amizmiz-5',
+                type: 'raster',
+                source: 'Morocco-Amizmiz-5',
+                minzoom: 9,
+                maxzoom: 22
+            });
+
+            // 衛星画像ソース
+            map.addSource("Morocco-Amizmiz-6", {
+                type: 'raster',
+                tiles: [
+                    'https://tiles.openaerialmap.org/64ff7ed9649d390001c4755c/0/64ff7ed9649d390001c4755d/{z}/{x}/{y}',
+                ],
+                attribution: '<a href="https://map.openaerialmap.org/#/-8.28094482421875,31.13760327002129,10/user/63e60f41c6ef740006cfd0e9?_k=lp7gmu" target="_blank">© Maxar Technologies Open Data Program, marged by Yerçizenler</a>',
+                tileSize: 512,
+                // scheme: "tms"
+            });
+
+            // 衛星画像レイヤ
+            map.addLayer({
+                id: 'Morocco-Amizmiz-6',
+                type: 'raster',
+                source: 'Morocco-Amizmiz-6',
+                minzoom: 9,
+                maxzoom: 22
+            });
+
+            // 衛星画像ソース
+            map.addSource("Morocco-Chichaoua", {
+                type: 'raster',
+                tiles: [
+                    'https://tiles.openaerialmap.org/64fee318649d390001c47534/0/64fee318649d390001c47535/{z}/{x}/{y}',
+                ],
+                attribution: '<a href="https://map.openaerialmap.org/#/-8.28094482421875,31.13760327002129,10/user/63e60f41c6ef740006cfd0e9?_k=lp7gmu" target="_blank">© Maxar Technologies Open Data Program, marged by Yerçizenler</a>',
+                tileSize: 512,
+                // scheme: "tms"
+            });
+
+            // 衛星画像レイヤ
+            map.addLayer({
+                id: 'Morocco-Chichaoua',
+                type: 'raster',
+                source: 'Morocco-Chichaoua',
+                minzoom: 9,
+                maxzoom: 22
+            });
+
+            // 衛星画像ソース
+            map.addSource("Morocco-Moulay-Brahim", {
+                type: 'raster',
+                tiles: [
+                    'https://tiles.openaerialmap.org/64fff5bb649d390001c47573/0/64fff5bb649d390001c47574/{z}/{x}/{y}',
+                ],
+                attribution: '<a href="https://map.openaerialmap.org/#/-8.28094482421875,31.13760327002129,10/user/63e60f41c6ef740006cfd0e9?_k=lp7gmu" target="_blank">© Maxar Technologies Open Data Program, marged by Yerçizenler</a>',
+                tileSize: 512,
+                // scheme: "tms"
+            });
+
+            // 衛星画像レイヤ
+            map.addLayer({
+                id: 'Morocco-Moulay-Brahim',
+                type: 'raster',
+                source: 'Morocco-Moulay-Brahim',
+                minzoom: 9,
+                maxzoom: 22
+            });
+
+            // 衛星画像ソース
+            map.addSource("Morocco-Benguerir", {
+                type: 'raster',
+                tiles: [
+                    'https://tiles.openaerialmap.org/65016357649d390001c475a7/0/65016357649d390001c475a8/{z}/{x}/{y}',
+                ],
+                attribution: '<a href="https://map.openaerialmap.org/#/-8.28094482421875,31.13760327002129,10/user/63e60f41c6ef740006cfd0e9?_k=lp7gmu" target="_blank">© Maxar Technologies Open Data Program, marged by Yerçizenler</a>',
+                tileSize: 512,
+                // scheme: "tms"
+            });
+
+            // 衛星画像レイヤ
+            map.addLayer({
+                id: 'Morocco-Benguerir',
+                type: 'raster',
+                source: 'Morocco-Benguerir',
+                minzoom: 9,
+                maxzoom: 22
+            });
+
+            // 衛星画像ソース
+            map.addSource("Morocco-Tarqudant", {
+                type: 'raster',
+                tiles: [
+                    'https://tiles.openaerialmap.org/64fffa8a649d390001c47578/0/64fffa8a649d390001c47579/{z}/{x}/{y}',
+                ],
+                attribution: '<a href="https://map.openaerialmap.org/#/-8.28094482421875,31.13760327002129,10/user/63e60f41c6ef740006cfd0e9?_k=lp7gmu" target="_blank">© Maxar Technologies Open Data Program, marged by Yerçizenler</a>',
+                tileSize: 512,
+                // scheme: "tms"
+            });
+
+            // 衛星画像レイヤ
+            map.addLayer({
+                id: 'Morocco-Tarqudant',
+                type: 'raster',
+                source: 'Morocco-Tarqudant',
+                minzoom: 9,
+                maxzoom: 22
+            });
+
+            // 衛星画像ソース
+            map.addSource("Morocco-Agardir", {
+                type: 'raster',
+                tiles: [
+                    'https://tiles.openaerialmap.org/64fed8bb649d390001c4752f/0/64fed8bb649d390001c47530/{z}/{x}/{y}',
+                ],
+                attribution: '<a href="https://map.openaerialmap.org/#/-8.28094482421875,31.13760327002129,10/user/63e60f41c6ef740006cfd0e9?_k=lp7gmu" target="_blank">© Maxar Technologies Open Data Program, marged by Yerçizenler</a>',
+                tileSize: 512,
+                // scheme: "tms"
+            });
+
+            // 衛星画像レイヤ
+            map.addLayer({
+                id: 'Morocco-Agardir',
+                type: 'raster',
+                source: 'Morocco-Agardir',
+                minzoom: 9,
+                maxzoom: 22
+            });
+
+            map.addSource("pmtiles-google-building", {
+                type: "vector",
+                url: "pmtiles://" + "https://xs489works.xsrv.jp/pmtiles-data/google/Morocco-Buildings-Footprint.pmtiles",
+                attribution: '<a href="https://data.humdata.org/dataset/openbuildings_morocco_earthquake_footprint">© Google Research, Morocco Buildings Footprint</a>',
+                generateId: true
+            });
+
+            map.addLayer({
+                'id': 'google-building-line',
+                'source': 'pmtiles-google-building',
+                "source-layer": "open_buildings_v3_polygons_your_own_wkt_polygonfgb",
+                'type': 'line',
+                "minzoom": 12,
+                "maxzoom": 23,
+                'paint': {
+                    "line-color": 'rgb(0, 0, 255)',
+                    "line-width": 1.0
+                }
+            });
+
+            // 建物被害評価ソース
+            map.addSource('building-damage-assessment', {
+                'type': 'geojson',
+                'data': './EMSR695_AOI01-08_GRA_PRODUCT_builtUpP.geojson',
+                cluster: false,
+                attribution: '<a href="https://rapidmapping.emergency.copernicus.eu/EMSR696/download">© Copernicus Emergency Management Service, Flood in Libya</a>'
+            });
+
+            // 建物被害評価ポイントレイヤ
+            map.addLayer({
+                "id": "building-damage-assessment",
+                "source": "building-damage-assessment",
+                "type": "circle",
+                'paint': {
+                    'circle-color': [
+                        'match',
+                        ['get', 'damage_gra'],
+                        'Damaged', 'rgba(255, 255, 0, 1)',
+                        'Destroyed', 'rgba(255, 0, 0, 1)',
+                        'Possibly damaged', 'rgba(0, 255, 0, 1)',
+                        'rgba(0, 0, 0, 1)' // default color
+                    ],
+                    'circle-radius': 6,
+                    'circle-stroke-width': 1,
+                    'circle-stroke-color': 'rgba(0, 0, 0, 1)'
+                }
+            });
+
+
+        })
+
+        // スライダーで衛星画像の不透明度を制御
+        const sliderOpactiy = document.getElementById('slider-opacity');
+        const sliderOpactiyValue = document.getElementById('slider-opacity-value');
+
+        sliderOpactiy.addEventListener('input', (e) => {
+            map.setPaintProperty(
+                'Morocco-Marrakesh',
+                'raster-opacity',
+                parseInt(e.target.value, 10) / 100
+            );
+            map.setPaintProperty(
+                'Morocco-Amizmiz-1',
+                'raster-opacity',
+                parseInt(e.target.value, 10) / 100
+            );
+            map.setPaintProperty(
+                'Morocco-Amizmiz-2',
+                'raster-opacity',
+                parseInt(e.target.value, 10) / 100
+            );
+            map.setPaintProperty(
+                'Morocco-Amizmiz-3',
+                'raster-opacity',
+                parseInt(e.target.value, 10) / 100
+            );
+            map.setPaintProperty(
+                'Morocco-Amizmiz-4',
+                'raster-opacity',
+                parseInt(e.target.value, 10) / 100
+            );
+            map.setPaintProperty(
+                'Morocco-Amizmiz-5',
+                'raster-opacity',
+                parseInt(e.target.value, 10) / 100
+            );
+            map.setPaintProperty(
+                'Morocco-Amizmiz-6',
+                'raster-opacity',
+                parseInt(e.target.value, 10) / 100
+            );
+            map.setPaintProperty(
+                'Morocco-Chichaoua',
+                'raster-opacity',
+                parseInt(e.target.value, 10) / 100
+            );
+            map.setPaintProperty(
+                'Morocco-Moulay-Brahim',
+                'raster-opacity',
+                parseInt(e.target.value, 10) / 100
+            );
+            map.setPaintProperty(
+                'Morocco-Benguerir',
+                'raster-opacity',
+                parseInt(e.target.value, 10) / 100
+            );
+            map.setPaintProperty(
+                'Morocco-Tarqudant',
+                'raster-opacity',
+                parseInt(e.target.value, 10) / 100
+            );
+            map.setPaintProperty(
+                'Morocco-Agardir',
+                'raster-opacity',
+                parseInt(e.target.value, 10) / 100
+            );
+            sliderOpactiyValue.textContent = e.target.value + '%';
+        });
+    </script>
+</body>
+
+</html>
